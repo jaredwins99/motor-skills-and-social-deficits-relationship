@@ -1,0 +1,760 @@
+---
+title: "Final Presentation"
+author: "Jared Winslow"
+date: "6-10-20"
+output: 
+  ioslides_presentation:
+    smaller: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(alr4)
+
+
+# Import files
+demographic <- read.csv("KKI_demographicInfo.csv")
+
+movement <- read.csv("KKI_movementAssessmentBatteryforChildren.csv")
+
+social <- read.csv("KKI_SocialResponsivenessScaleQuestionnaire.csv")
+
+
+# Fix formatting
+names(movement)[1] <- "ID"
+
+names(demographic)[1] <- "ID"
+
+names(social)[1] <- "ID"
+
+
+# Join together data
+almostdata <- full_join(demographic, social, by="ID")
+
+data <- full_join(almostdata, movement, by=c("ID","visit"))
+
+
+# Date cleaning
+
+# Filter out duplicates
+duplicates <- which(duplicated(data))
+
+data <- data[-duplicates, ]
+
+# Near duplicates removal by row (near duplicate meaning two entries with only difference being CurrentlyNotTakingMeds value)
+data <- filter(data, ID != c(1056,1066,1222,1223,1268,1414,1444,1504,1540)) # ID: 1056, 1066, 1222, 1223, 1268, 1414, 1444, 1504, 1540 respectively 
+
+# Filter out participants who didn't or couldn't follow directions
+data <- filter(data, !(is.na(mABC_TotalStandardScore))) # ID: 1622
+data <- filter(data, ID != c(2106,1341))
+# Don't filter out participants who experienced minor difficulties (i.e. band-aid) ID: 2121, or participants who gave questionable effort (it is likely many children gave sub-par effort but it wasn't noted) ID: 2018
+
+
+# Save entries with visit = 2 (or 3) for later
+dataWithSecondVisit <- data
+secondVisit <- filter(dataWithSecondVisit, visit==2 || visit==3) 
+
+# Count by visit
+countByVist <- summarize(group_by(dataWithSecondVisit, visit), count=n())
+
+# Filter out repeat visits (no entries of repeat visits had a social deficit score)
+data <- filter(data, visit==1)
+
+# Filter out remaining entries without SRS score
+data <- filter(data, !(is.na(SRS_TotalRawScore)))
+
+# Make SRS_VERSION a factor
+data$SRS_VERSION <- as.factor(data$SRS_VERSION)
+```
+
+## Research Question
+
+Scientisits collected data on a variety of children's attributes, including gender, age, social deficit scores, intelligence score, handedness, and balance, dexterity, catching, & throwing abilities, which were aggregated to create a movement score. 
+
+In looking at this data, we are interested in determing whether their is relationship between social deficit scores and movement ability, especially in regards to children with ADHD and autism. 
+
+## The Data
+
+Here are the demographics of our participants after filtering out repeat visits, other duplicates, and troublemakers:
+
+```{r}
+genderGroupCount <- summarize(group_by(data, Gender, PrimaryDiagnosis), Count=n())
+```
+
+        TypDev, ADHD, Autism
+        63,     45,   25    Female
+        170,    112,  118   Male
+
+
+
+```{r}
+# Densities for the variables SRS_TotalRawScore, mABC_TotalStandardScore, and mABC_AGE all look *relatively* normal.
+
+# Densities
+srsDensity <- ggplot(data) + geom_density(aes(SRS_TotalRawScore))
+
+movementDensity <- ggplot(data) + geom_density(aes(mABC_TotalStandardScore))
+
+ageDensity <- ggplot(data) + geom_density(aes(mABC_AGE))
+
+# SRS score boxplots by primary diagnosis
+srsBoxplot <- ggplot(data, aes(x=PrimaryDiagnosis, y=SRS_TotalRawScore, color=PrimaryDiagnosis)) + geom_boxplot()
+
+# Movement score boxplots by primary diagnosis
+movementBoxplot <- ggplot(data, aes(x=PrimaryDiagnosis, y=mABC_TotalStandardScore, color=PrimaryDiagnosis)) + geom_boxplot()
+
+# Based on our initial plots, we are justified in stratifying the data by primary diagnosis group
+typ <- filter(data, PrimaryDiagnosis=="None")
+
+adhd <- filter(data, PrimaryDiagnosis=="ADHD")
+
+autism <- filter(data, PrimaryDiagnosis=="Autism")
+
+# So let's now look at each group individually
+
+# Typically Developing
+srsTypDensity <- ggplot(typ) + geom_density(aes(SRS_TotalRawScore))
+movementTypDensity <- ggplot(typ) + geom_density(aes(mABC_TotalStandardScore))
+ageTypDensity <- ggplot(typ) + geom_density(aes(mABC_AGE))
+
+typScatterplot <- ggplot(typ, aes(x=mABC_TotalStandardScore, y=SRS_TotalRawScore, color=PrimaryDiagnosis)) + geom_point() + geom_jitter() + geom_smooth() + geom_smooth(method="lm", color="cyan")
+
+# ADHD
+srsADHDDensity <- ggplot(adhd) + geom_density(aes(SRS_TotalRawScore))
+movementADHDDensity <- ggplot(adhd) + geom_density(aes(mABC_TotalStandardScore))
+ageADHDDensity <- ggplot(adhd) + geom_density(aes(mABC_AGE))
+
+adhdScatterplot <- ggplot(adhd, aes(x=mABC_TotalStandardScore, y=SRS_TotalRawScore, color=PrimaryDiagnosis)) + geom_point() + geom_jitter() + geom_smooth() + geom_smooth(method="lm", color="cyan")
+
+# Autism
+srsAutismDensity <- ggplot(autism) + geom_density(aes(SRS_TotalRawScore))
+movementAutismDensity <- ggplot(autism) + geom_density(aes(mABC_TotalStandardScore))
+ageAutismDensity <- ggplot(autism) + geom_density(aes(mABC_AGE))
+
+autismScatterplot <- ggplot(autism, aes(x=mABC_TotalStandardScore, y=SRS_TotalRawScore, color=PrimaryDiagnosis)) + geom_point() + geom_jitter() + geom_smooth() + geom_smooth(method="lm", color="cyan")
+```
+
+And here is a preliminary visual of the relationship between social deficits and movement ability:
+
+```{r fig.width=5, fig.height=2.5}
+ggplot(data, aes(x=mABC_TotalStandardScore, y=SRS_TotalRawScore, color=PrimaryDiagnosis)) + geom_point() + geom_jitter() + geom_smooth(method="lm", color="cyan") + labs(x="Movement Score", y="SRS Score")
+```
+
+```{r}
+# At first glance, there seems to be a strong relationship between social deficit score and movement score, but from looking at the colored primary diagnosis groups, much of this trend comes from group differences, meaning we should stratify the data by primary diagnosis group.
+
+# After splitting up the data in this way and reviewing the scatterplots and densities of the same three variables, we see a much weaker relationship between the two variables for the typically developing and adhd groups and almost no relationship for the autism group. All the densities (nine of them) look *relatively* normal except social deficit score's.
+```
+
+
+## The Secret Influencer: SRS Version
+
+The two versions of the social deficit test were not consistent with one another neither in general nor for the individual primary diagnosis groups, especially typically developing. From here on, we will stratify the data by test version.
+
+```{r}
+# Now let's look at these plots seperated by version number
+
+ver1 <- filter(data, SRS_VERSION==1)
+ver2 <- filter(data, SRS_VERSION==2)
+typVer1 <- filter(typ, SRS_VERSION==1)
+typVer2 <- filter(typ, SRS_VERSION==2)
+adhdVer1 <- filter(adhd, SRS_VERSION==1)
+adhdVer2 <- filter(adhd, SRS_VERSION==2)
+autismVer1 <- filter(autism, SRS_VERSION==1)
+autismVer2 <- filter(autism, SRS_VERSION==2)
+```
+
+```{r fig.width=2.5,fig.height=1.8}
+# SRS score versus ID
+
+# ggplot(data, aes(x=ID, y=SRS_TotalRawScore, color=SRS_VERSION)) + geom_point() + geom_jitter() + labs(title="SRS Scores and Test Version", x="ID", y="SRS Scores", color="Test Version") + theme(legend.position = "none")
+
+ggplot(typ, aes(x=ID, y=SRS_TotalRawScore, color=SRS_VERSION)) + geom_point() + geom_jitter() + labs(title="Typically Developing", x="ID", y="SRS Score") + theme(legend.position = "none")
+
+ggplot(adhd, aes(x=ID, y=SRS_TotalRawScore, color=SRS_VERSION)) + geom_point() + geom_jitter() + labs(title="ADHD", x="ID", y="SRS Score") + theme(legend.position = "none")
+
+ggplot(autism, aes(x=ID, y=SRS_TotalRawScore, color=SRS_VERSION)) + geom_point() + geom_jitter() + labs(title="Autism", x="ID", y="SRS Score") + theme(legend.position = "none")
+```
+
+```{r fig.width=2.5, fig.height=2.2}
+# ggplot(data, aes(x=mABC_TotalStandardScore, y=SRS_TotalRawScore, color=SRS_VERSION)) + geom_point(size=1) + geom_jitter() + geom_smooth(method="lm", color="green") + labs(title="SRS Score vs Movement Score", x="Movement Scores by Test Version", y="SRS Scores by P.D. Group") + facet_grid(vars(PrimaryDiagnosis), vars(SRS_VERSION))
+
+ggplot(typ, aes(x=mABC_TotalStandardScore, y=SRS_TotalRawScore, color=PrimaryDiagnosis)) + geom_point() + geom_jitter() + geom_smooth(method="lm", color="cyan") + facet_grid(cols = vars(SRS_VERSION)) + labs(title="Typically Developing", x="Movement Score", y="SRS Score") + theme(legend.position = "none")
+
+ggplot(adhd, aes(x=mABC_TotalStandardScore, y=SRS_TotalRawScore, color=PrimaryDiagnosis)) + geom_point() + geom_jitter() + geom_smooth(method="lm", color="cyan") + facet_grid(cols = vars(SRS_VERSION)) + labs(title="ADHD", x="Movement Score", y="SRS Score") + theme(legend.position = "none")
+
+ggplot(autism, aes(x=mABC_TotalStandardScore, y=SRS_TotalRawScore, color=PrimaryDiagnosis)) + geom_point() + geom_jitter() + geom_smooth(method="lm", color="cyan") + facet_grid(cols = vars(SRS_VERSION)) + labs(title="Autism", x="Movement Score", y="SRS Score") + theme(legend.position = "none")
+```
+
+```{r}
+# When we split up the data by primary diagnosis group and then compare the two versions, there are differences in the linear model lines.
+
+# For the typically developing group, the means are different for the two versions; this explains the bimodal (non-normal) density we saw previously, i.e. the odd one out was not normal directly because of test version. If we check the densities seperately for each version we would see they are relatively normal.
+```
+
+## Controlling for Age and Sex
+
+```{r}
+# Comparing SRS scores by sex
+
+# Scatterplot of SRS score versus movement score for male and female
+female <- filter(data, Gender=="F")
+
+male <- filter(data, Gender=="M")
+
+# Not added to final presentation
+genderScatterplot <- ggplot(data, aes(mABC_TotalStandardScore, SRS_TotalRawScore, color=Gender)) + geom_point() + geom_smooth(data=female, method="lm", color="red") + geom_smooth(data=male, method="lm", color="cyan")
+
+# Almost the same line of best fit
+```
+
+The differences between sexes in terms of social deficits is minimal. Social deficit scores don't really change with age and movement scores increase with age. 
+
+```{r fig.width=2.5, fig.height=1.8}
+ggplot(typ, aes(Gender, SRS_TotalRawScore, color=Gender)) + geom_boxplot() + facet_grid(cols = vars(SRS_VERSION)) + labs(title="Typically Developing", x="Sex", y="SRS Score") + theme(legend.position = "none")
+
+ggplot(adhd, aes(Gender, SRS_TotalRawScore, color=Gender)) + geom_boxplot() + facet_grid(cols = vars(SRS_VERSION)) + labs(title="ADHD", x="Sex", y="SRS Score") + theme(legend.position = "none")
+
+ggplot(autism, aes(Gender, SRS_TotalRawScore, color=Gender)) + geom_boxplot() + facet_grid(cols = vars(SRS_VERSION)) + labs(title="Autism", x="Sex", y="SRS Score") + theme(legend.position = "none")
+```
+
+```{r}
+# The reason the means between the sexes are different for test version 2 of the autism group may be because the sample for females in the this category was quite small, so there is room for relatively more noise
+```
+
+```{r}
+# The connected line used below is draw by connecting the mean of each of the age groups (for all primary diagnosis groups) together (in purple)
+
+dataRoundedAge <- data %>%
+  mutate(RoundedAge = round(mABC_AGE))
+
+meanAge <- summarize(group_by(dataRoundedAge, RoundedAge), MeanAge=mean(mABC_AGE), MeanMovementScore=mean(mABC_TotalStandardScore), MeanSRSScore=mean(SRS_TotalRawScore))
+
+# It looks quite similar to the loess smoother (for all primary diagnosis groups) for each of the two scatterplots (SRS score ~ age and movement score ~ age)
+```
+
+```{r fig.width=3.2, fig.height=2.8}
+# Comparing SRS scores by age
+
+ggplot(dataRoundedAge, aes(x=mABC_AGE, y=SRS_TotalRawScore, color=PrimaryDiagnosis)) + geom_point(position = "jitter") + facet_grid(cols = vars(SRS_VERSION)) + labs(title = "SRS Score vs Age", x = "Age", y = "SRS Score") + geom_smooth(data=typ, method="lm") + geom_smooth(data=adhd, method="lm") + geom_smooth(data=autism, method="lm") + geom_line(data = meanAge, aes(x=MeanAge, y=MeanSRSScore), color="purple", size=.5) + theme(legend.position = "none")
+
+# There seems to be no improvement in social deficit score by age
+
+# Comparing movement scores by age
+
+ggplot(dataRoundedAge, aes(x=mABC_AGE, y=mABC_TotalStandardScore, color=PrimaryDiagnosis)) + geom_point(position = "jitter") + facet_grid(cols = vars(SRS_VERSION)) + labs(title = "Movement Score vs Age", x = "Age", y = "Movement Score") + geom_smooth(data=typ, method="lm") + geom_smooth(data=adhd, method="lm") + geom_smooth(data=autism, method="lm") + geom_line(data = meanAge, aes(x=MeanAge, y=MeanMovementScore), color="purple", size=.5) + theme(legend.position = "none")
+
+# Since, there seems to be slight improvement in movement score by age (graphs below), this can be checked:
+
+x <- data$mABC_AGE
+y <- data$mABC_TotalStandardScore
+xbar <- mean(x)
+ybar <- mean(y)
+corxy <- cor(x,y)
+sdx <- sd(x)
+sdy <- sd(y)
+beta1 <- corxy * sdy/sdx
+beta0 <- ybar + beta1*xbar
+yhat <- beta1*x + beta0
+residual <- y - yhat
+ageCorrelation <- corxy
+ageBetaEstimate <- beta1
+
+# Not added to final presentation
+movementVSAgeResiduals <- qplot(x=yhat,y=residual) + geom_smooth() + labs(title = "Social Score ~  Age: Residuals", x = "Social Score Y Hat Values", y = "Residuals")
+
+# Here is the print out of the statistics for movement ability's growth:
+
+# Not added to final presentation
+ageString <- sprintf("Movement Score vs Age : Correlation %s, Beta 1 Estimate %s", round(ageCorrelation * 100) / 100, round(ageBetaEstimate * 100) / 100)
+```
+
+## Controlling for Other Variables
+
+Secondary Diagnosis (red = no, blue = yes)
+
+```{r fig.width=4,fig.height=2.2}
+# Secondary Diagnosis
+
+# ADHD
+
+# Yes and No
+adhdSecondYes <- filter(adhd, SecondaryDiagnosis=="Yes")
+
+adhdSecondNo <- filter(adhd, SecondaryDiagnosis=="No")
+
+ggplot(adhd, aes(x=mABC_TotalStandardScore, y=SRS_TotalRawScore, color=SecondaryDiagnosis)) + geom_point() + geom_jitter() + geom_smooth(data=adhdSecondYes, method="lm") + geom_smooth(data=adhdSecondNo, method="lm") + facet_grid(cols = vars(SRS_VERSION)) + labs(title = "ADHD", x = "Movement Score", y = "SRS Score") + theme(legend.position = "none")
+
+# Autism
+
+# There were a few unknown secondary diagnoses
+autismWithSecond <- filter(autism, !(is.na(SecondaryDiagnosis)))
+
+autismWithSecond <- filter(autism, ID!=1843)
+
+autismWithSecond <- filter(autism, SecondaryDiagnosis!="Unknown")
+
+# Yes and No
+autismSecondYes <- filter(autism, SecondaryDiagnosis=="Yes")
+
+autismSecondNo <- filter(autism, SecondaryDiagnosis=="No")
+
+ggplot(autismWithSecond, aes(x=mABC_TotalStandardScore, y=SRS_TotalRawScore, color=SecondaryDiagnosis)) + geom_point() + geom_jitter() + geom_smooth(data=autismSecondYes, method="lm") + geom_smooth(data=autismSecondNo, method="lm") + facet_grid(cols = vars(SRS_VERSION)) + labs(title = "Autism", x = "Movement Score", y = "SRS Score") + theme(legend.position = "none")
+```
+
+ADHD Subtype (red = combined, blue = inattentive, green = hyperactive/impulsive)
+
+```{r fig.width=3.8,fig.height=2.2, warning=FALSE}
+# ADHD Subtype
+
+# ADHD
+
+# The subtypes
+adhdCombined <- filter(adhd, ADHD_Subtype=="Combined")
+
+adhdInattentive <- filter(adhd, ADHD_Subtype=="Inattentive")
+
+adhdHI <- filter(adhd, ADHD_Subtype=="Hyperactive/Impulsive")
+
+ggplot(adhd, aes(x=mABC_TotalStandardScore, y=SRS_TotalRawScore, color=ADHD_Subtype)) + geom_point() + geom_jitter() + geom_smooth(data=adhdCombined, method="lm") + geom_smooth(data=adhdInattentive, method="lm") + geom_smooth(data=adhdHI, method="lm") + facet_grid(cols = vars(SRS_VERSION)) + labs(title = "ADHD", x = "Movement Score", y = "SRS Score") + theme(legend.position = "none")
+
+# Autism
+
+# Filter out autistic particpants without adhd
+autismWithADHD <- filter(autism, !(is.na(ADHD_Subtype)))
+
+autismWithADHD <- filter(autismWithADHD, ADHD_Subtype!="Missing DICA")
+
+autismWithADHD <- filter(autismWithADHD, ADHD_Subtype!="No dx")
+
+autismWithADHD <- filter(autismWithADHD, ADHD_Subtype!="")
+
+# The subtypes                               
+autismCombined <- filter(autism, ADHD_Subtype=="Combined")
+
+autismInattentive <- filter(autism, ADHD_Subtype=="Inattentive")
+
+autismHI <- filter(autism, ADHD_Subtype=="Hyperactive/Impulsive")
+
+ggplot(autismWithADHD, aes(x=mABC_TotalStandardScore, y=SRS_TotalRawScore, color=ADHD_Subtype)) + geom_point() + geom_jitter() + geom_smooth(data=autismCombined, method="lm") + geom_smooth(data=autismInattentive, method="lm") + geom_smooth(data=autismHI, method="lm") + facet_grid(cols = vars(SRS_VERSION)) + labs(title = "Autism", x = "Movement Score", y = "SRS Score") + theme(legend.position = "none")
+```
+
+Taking meds and balance subscores largely uninteresting except for typically developing balance subscore 3.
+
+Taking Medication
+
+```{r fig.width=4.2,fig.height=1.8}
+# Not added to final presentation
+adhdMedsYes <- filter(adhd, CurrentlyNotTakingMeds==FALSE)
+
+adhdMedsNo <- filter(adhd, CurrentlyNotTakingMeds==TRUE)
+
+medYesSummary <- summary(adhdMedsYes$SRS_TotalRawScore)
+
+medNoSummary <- summary(adhdMedsNo$SRS_TotalRawScore)
+
+medPlot <- ggplot(adhd, aes(x=mABC_TotalStandardScore, y=SRS_TotalRawScore, color=CurrentlyNotTakingMeds)) + geom_point() + geom_jitter() + geom_smooth(data=adhdMedsYes, method="lm", color="cyan") + geom_smooth(data=adhdMedsNo, method="lm", color="red")
+```
+
+## Typically Developing Model
+
+```{r warning=FALSE}
+typ.subset <- subset(typ, select = c(SRS_TotalRawScore, mABC_AGE, mABC_TotalStandardScore, mABC_Balance.1.StandardScore, mABC_Balance.2.StandardScore, mABC_Balance.3.StandardScore, mABC_Balance.Component.StandardScore, mABC_ManualDexterity.1.StandardScore, mABC_ManualDexterity.2.StandardScore, mABC_ManualDexterity.3.StandardScore, mABC_ManualDexterity.Component.StandardScore, mABC_AimingAndCatching.1.StandardScore, mABC_AimingAndCatching.2.StandardScore, mABC_AimingAndCatching.Component.StandardScore))
+
+typCorrelations <- cor(typ.subset)
+
+
+# Model with social score versus only movement score
+withoutOthers <- summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore, typ))
+
+
+# SRS Version
+
+
+# Residuals to be used in added variable plot
+typ.subset$SRSres <- residuals(lm(SRS_TotalRawScore ~ SRS_VERSION, data = typ))
+typ.subset$mABCres <- residuals(lm(mABC_TotalStandardScore ~ SRS_VERSION, data = typ))
+
+# Original
+originalTypPlot <- ggplot(typ, aes(mABC_TotalStandardScore, SRS_TotalRawScore)) + geom_point() + geom_jitter() + geom_smooth(method="lm") + geom_smooth()
+
+# Added variable plot: SRS_VERSION
+versionAddedPlot <- ggplot(typ.subset, aes(mABCres, SRSres)) + geom_point() + geom_jitter() + geom_smooth(method="lm") + geom_smooth()
+
+# Model with added varible: SRS_VERSION
+typSummary <- summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SRS_VERSION, typ))
+
+
+# Age
+# No interesting results for age, just checking if it affects anything
+
+
+# Residuals to be used in added variable plot
+typ.subset$SRSres2 <- residuals(lm(SRS_TotalRawScore ~ mABC_AGE, data = typ))
+typ.subset$mABCres2 <- residuals(lm(mABC_TotalStandardScore ~ mABC_AGE, data = typ))
+
+# Original
+originalTypPlot <- ggplot(typ, aes(mABC_TotalStandardScore, SRS_TotalRawScore)) + geom_point() + geom_jitter() + geom_smooth(method="lm") + geom_smooth()
+
+# Added variable plot: AGE
+ageAddedPlot <- ggplot(typ.subset, aes(mABCres2, SRSres2)) + geom_point() + geom_jitter() + geom_smooth(method="lm") + geom_smooth()
+
+# Model with added varible: AGE
+ageSummary <- summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + mABC_AGE, typ))
+```
+
+```{r echo=TRUE}
+typModel <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION - 1, typ)
+```
+
+```{r}
+typModelWithInt <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION, typ)
+
+typModel1 <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore - 1, typ)
+
+#names(anova(typModel, typModel1))
+#anova(typModel, typModel1)
+#names(summary(typModel))
+#summary(typModel)
+#summary(typModelWithInt)
+#summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore, typ, SRS_VERSION == "1"))
+#summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore, typ, SRS_VERSION == "2"))
+
+sprintf("Adjusted R Squared: %s, F Test's P Value: %s", round(summary(typModelWithInt)$adj.r.squared * 1000) / 1000, round(anova(typModel, typModel1)$"Pr(>F)"[2] * 1000) / 1000)
+
+typMovementBeta <- summary(typModel)$coefficients[1]
+
+typMovementBetaUpper <- typMovementBeta + qt(0.975,df=summary(typModel)$df[2]) * summary(typModel)$coefficients[1,2]
+typMovementBetaLower <- typMovementBeta - qt(0.975,df=summary(typModel)$df[2]) * summary(typModel)$coefficients[1,2]
+
+typInteractionTerm <- summary(typModel)$coefficients[4]
+
+typInteractionTermUpper <- typInteractionTerm + qt(0.975,df=summary(typModel)$df[2]) * summary(typModel)$coefficients[4,2]
+typInteractionTermLower <- typInteractionTerm - qt(0.975,df=summary(typModel)$df[2]) * summary(typModel)$coefficients[4,2]
+
+#typMovementBetaUpper
+#typMovementBetaLower 
+#typInteractionTermUpper
+#typInteractionTermLower
+
+#confint(typModel)
+
+sprintf("Version 1 Beta Estimates: y = %s + %sx", round(summary(typModel)$coefficients[2] * 10) / 10, round(typMovementBeta * 1000) / 1000)
+
+sprintf("Version 2 Beta Estimates: y = %s + %sx", round(summary(typModel)$coefficients[3] * 10) / 10, round((typMovementBeta + typInteractionTerm) * 1000) / 1000)
+
+#summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION - 1, typ))
+
+#summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + mABC_TotalStandardScore * SRS_VERSION - 1, typ))
+
+```
+
+```{r fig.height=3,fig.width=3}
+residuals <- residuals(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION, typ))
+
+residualsV1 <- residuals(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore, typVer1))
+
+residualsV2 <- residuals(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore, typVer2))
+
+values <- fitted.values(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION, typ))
+
+valuesV1 <- fitted.values(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore, typVer1))
+
+valuesV2 <- fitted.values(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore, typVer2))
+
+# Normality
+#qqnorm(residuals)
+qqnorm(residualsV1)
+qqnorm(residualsV2)
+```
+
+## Checking Assumptions
+
+```{r fig.height=2.5,fig.width=4}
+# Linearity
+#ggplot(data=NULL, aes(values, residuals)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+ggplot(data=NULL, aes(valuesV1, residualsV1)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+ggplot(data=NULL, aes(valuesV2, residualsV2)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+```
+
+```{r fig.height=2.5,fig.width=4}
+# Homoskadasticity
+#ggplot(data=NULL, aes(values, residuals^2)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+ggplot(data=NULL, aes(valuesV1, residualsV1^2)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+ggplot(data=NULL, aes(valuesV2, residualsV2^2)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+
+# It looks like test version 1's data fits the three assumptions quite a bit better than test version 2's data
+```
+
+## ADHD Model
+
+```{r warning=FALSE}
+adhd.subset <- subset(adhd, select = c(SRS_TotalRawScore, mABC_AGE, CurrentlyNotTakingMeds, SecondaryDiagnosis, ADHD_Subtype, mABC_TotalStandardScore))
+
+# adhdPlotMatrix <- scatterplotMatrix(adhd.subset)
+
+
+# Model with social score versus only movement score
+adhdJustMovementSummary <- summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore, adhd))
+
+
+# ADHD Subtype
+
+
+# Residuals to be used in added variable plot
+adhd.subset$SRSres <- residuals(lm(SRS_TotalRawScore ~ ADHD_Subtype, adhd))
+adhd.subset$mABCres <- residuals(lm(mABC_TotalStandardScore ~ ADHD_Subtype, adhd))
+
+# Original for comparison
+originalADHDPlot <- ggplot(adhd, aes(mABC_TotalStandardScore, SRS_TotalRawScore)) + geom_point() + geom_jitter() + geom_smooth() + geom_smooth(method="lm")
+
+# Added variable plot: ADHD_Subtype
+subtypeAddedADHDPlot <- ggplot(adhd.subset, aes(mABCres, SRSres)) + geom_point() + geom_jitter() + geom_smooth() + geom_smooth(method="lm")
+
+# Model with added varible: ADHD_Subtype
+adhdSubtypeSummary <- summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + ADHD_Subtype, adhd))
+
+
+# Secondary Diagnosis
+
+
+# Residuals to be used in added variable plot
+adhd.subset$SRSres2 <- residuals(lm(SRS_TotalRawScore ~ SecondaryDiagnosis, adhd.subset))
+adhd.subset$mABCres2 <- residuals(lm(mABC_TotalStandardScore ~ SecondaryDiagnosis, adhd))
+
+# Original for comparison
+originalADHDPlot <- ggplot(adhd, aes(mABC_TotalStandardScore, SRS_TotalRawScore)) + geom_point() + geom_jitter() + geom_smooth() + geom_smooth(method="lm")
+
+# Added variable plot: SecondaryDiagnosis
+secondaryDiagnosisAddedADHDPlot <- ggplot(adhd.subset, aes(mABCres2, SRSres2)) + geom_point() + geom_jitter() + geom_smooth() + geom_smooth(method="lm")
+
+# Model with added varible: SecondaryDiagnosis
+adhdSecondaryDiagnosisSummary <- summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SecondaryDiagnosis, adhd))
+
+
+# F Tests
+
+adhdJustMovementSummary <- summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore - 1, adhd))
+
+adhd <- filter(adhd, !(is.na(CurrentlyNotTakingMeds)))
+
+adhdModel1 <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore, adhd)
+
+adhdModel2 <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION - 1, adhd)
+
+adhdModel3 <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION + SecondaryDiagnosis - 1, adhd)
+
+adhdModel4 <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION + SecondaryDiagnosis + ADHD_Subtype +  CurrentlyNotTakingMeds - 1, adhd)
+
+#Comment out because p value of CurrentlyNotTakingMeds was too high to include it
+#This was also true when comparing just adding CurreentlyNotTakingMedsand comparing to baseline model
+
+```
+
+```{r echo=TRUE}
+adhdModel <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION 
+                + SecondaryDiagnosis + ADHD_Subtype - 1, adhd)
+```
+
+```{r}
+adhdModelWithInt <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION + SecondaryDiagnosis + ADHD_Subtype, adhd)
+
+addingSecondaryDiagnosisSignificance <- anova(adhdModel2, adhdModel1)$"Pr(>F)"[2]
+
+addingSubtypeSignificance <- anova(adhdModel3, adhdModel2)$"Pr(>F)"[2]
+
+addingVersionSignificance <- anova(adhdModel4, adhdModel3)$"Pr(>F)"[2]
+
+#names(anova(adhdModel, adhdModel3))
+#anova(adhdModel, adhdModel3)
+#names(summary(adhdModel))
+#summary(adhdModel)
+summary(adhdModelWithInt)
+#summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SecondaryDiagnosis + ADHD_Subtype, adhd, SRS_VERSION == "1"))
+#summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SecondaryDiagnosis + ADHD_Subtype, adhd, SRS_VERSION == "2"))
+
+sprintf("Adjusted R Squared: %s, F Test's P Value: %s, For Taking Meds: %s", round(summary(adhdModelWithInt)$adj.r.squared * 1000) / 1000, round(anova(adhdModel, adhdModel3)$"Pr(>F)"[2] * 1000) / 1000, round(anova(adhdModel4, adhdModel)$"Pr(>F)"[2] * 1000) / 1000)
+
+adhdMovementBeta <- summary(adhdModel)$coefficients[1]
+
+adhdMovementBetaUpper <- adhdMovementBeta + qt(0.975,df=summary(adhdModel)$df[2]) * summary(adhdModel)$coefficients[1,2]
+adhdMovementBetaLower <- adhdMovementBeta - qt(0.975,df=summary(adhdModel)$df[2]) * summary(adhdModel)$coefficients[1,2]
+
+adhdInteractionTerm <- summary(adhdModel)$coefficients[7]
+
+adhdInteractionTermUpper <- adhdInteractionTerm + qt(0.975,df=summary(adhdModel)$df[2]) * summary(adhdModel)$coefficients[7,2]
+adhdInteractionTermLower <- adhdInteractionTerm - qt(0.975,df=summary(adhdModel)$df[2]) * summary(adhdModel)$coefficients[7,2]
+
+#adhdMovementBetaUpper
+#adhdMovementBetaLower
+#adhdInteractionTermUpper
+#adhdInteractionTermLower
+
+#confint(adhdModel)
+
+sprintf("Version 1 Beta Estimates: y = %s + %sx", round(summary(adhdModel)$coefficients[2] * 10) / 10, round(adhdMovementBeta * 1000) / 1000)
+
+sprintf("Version 2 Beta Estimates: y = %s + %sx", round(summary(adhdModel)$coefficients[3] * 10) / 10, round((adhdMovementBeta + adhdInteractionTerm) * 1000) / 1000)
+```
+
+```{r fig.height=3,fig.width=3}
+residuals <- residuals(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION + SecondaryDiagnosis + ADHD_Subtype, adhd))
+
+residualsV1 <- residuals(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SecondaryDiagnosis + ADHD_Subtype, adhdVer1))
+
+residualsV2 <- residuals(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SecondaryDiagnosis + ADHD_Subtype, adhdVer2))
+
+values <- fitted.values(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION + SecondaryDiagnosis + ADHD_Subtype, adhd))
+
+valuesV1 <- fitted.values(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SecondaryDiagnosis + ADHD_Subtype, adhdVer1))
+
+valuesV2 <- fitted.values(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SecondaryDiagnosis + ADHD_Subtype, adhdVer2))
+
+# Normality
+#qqnorm(residuals)
+qqnorm(residualsV1)
+qqnorm(residualsV2)
+```
+
+## Checking Assumptions
+
+```{r fig.height=2.5,fig.width=4}
+# Linearity
+#ggplot(data=NULL, aes(values, residuals)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+ggplot(data=NULL, aes(valuesV1, residualsV1)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+ggplot(data=NULL, aes(valuesV2, residualsV2)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+```
+
+```{r fig.height=2.5,fig.width=4}
+# Homoskadasticity
+#ggplot(data=NULL, aes(values, residuals^2)) + geom_point() + geom_smooth(method=loess", formula = y ~ x)
+ggplot(data=NULL, aes(valuesV1, residualsV1^2)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+ggplot(data=NULL, aes(valuesV2, residualsV2^2)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+
+# It looks like test version 1's data fits the three assumptions quite a bit better than test version 2's data
+```
+
+## Autism Model
+
+```{r}
+autismJustMovementSummary <- summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore, autism))
+
+autism <- filter(autism, !(is.na(CurrentlyNotTakingMeds)))
+
+#autism <- filter(autism, !(is.na(ADHD_Subtype)))
+```
+
+```{r echo=TRUE}
+autismModel <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION 
+                  + SecondaryDiagnosis - 1, autismWithSecond)
+```
+
+```{r}
+autismModelWithInt <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION + SecondaryDiagnosis, autismWithSecond)
+
+autismModel1 <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION, autismWithSecond)
+
+#autismModel4 <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION +SecondaryDiagnosis + CurrentlyNotTakingMeds, autismWithSecond)
+
+#names(anova(autismModel, autismModel1))
+#anova(autismModel, autismModel1)
+#names(summary(autismModel))
+#summary(autismModel)
+#summary(autismModelWithInt)
+#summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SecondaryDiagnosis - 1, autismWithSecond, SRS_VERSION == "1"))
+#summary(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SecondaryDiagnosis - 1, autismWithSecond, SRS_VERSION == "2"))
+
+sprintf("Adjusted R Squared: %s, F Test's P Value: %s", round(summary(autismModelWithInt)$adj.r.squared * 1000) / 1000, round(anova(autismModel,autismModel1)$"Pr(>F)"[2] * 1000) / 1000)
+
+autismMovementBeta <- summary(autismModel)$coefficients[1]
+
+autismMovementBetaUpper <- autismMovementBeta + qt(0.975,df=summary(autismModel)$df[2]) * summary(autismModel)$coefficients[1,2]
+autismMovementBetaLower <- autismMovementBeta - qt(0.975,df=summary(autismModel)$df[2]) * summary(autismModel)$coefficients[1,2]
+
+autismInteractionTerm <- summary(autismModel)$coefficients[6]
+
+autismInteractionTermUpper <- autismInteractionTerm + qt(0.975,df=summary(autismModel)$df[2]) * summary(autismModel)$coefficients[6,2]
+autismInteractionTermLower <- autismInteractionTerm - qt(0.975,df=summary(autismModel)$df[2]) * summary(autismModel)$coefficients[6,2]
+
+#autismMovementBetaUpper
+#autismMovementBetaLower
+#autismInteractionTermUpper
+#autismInteractionTermLower
+
+#confint(autismModel)
+
+sprintf("Version 1 Beta Estimates: y = %s + %sx", round(summary(autismModel)$coefficients[2] * 10) / 10, round(autismMovementBeta * 100) / 100)
+
+sprintf("Version 2 Beta Estimates: y = %s + %sx", round(summary(autismModel)$coefficients[3] * 10) / 10, round((autismMovementBeta + autismInteractionTerm) * 1000) / 1000)
+```
+
+```{r}
+#autismModel3 <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SRS_VERSION + ADHD_Subtype, autism)
+#autismModel4 <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SRS_VERSION + ADHD_Subtype + SecondaryDiagnosis, autism)
+#autismModel5 <- lm(SRS_TotalRawScore ~ mABC_TotalStandardScore +  SRS_VERSION + CurrentlyNotTakingMeds, autism)
+#Comment out because p values of variables were too high to include them
+
+#anova(autismModel3, autismModel2)
+#anova(autismModel4, autismModel3)
+#anova(autismModel5, autismModel4)
+```
+
+```{r fig.height=3,fig.width=3}
+residuals <- residuals(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION + SecondaryDiagnosis, autism))
+
+residualsV1 <- residuals(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SecondaryDiagnosis, autismVer1))
+
+residualsV2 <- residuals(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SecondaryDiagnosis, autismVer2))
+
+values <- fitted.values(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore * SRS_VERSION + SecondaryDiagnosis, autism))
+
+valuesV1 <- fitted.values(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SecondaryDiagnosis, autismVer1))
+
+valuesV2 <- fitted.values(lm(SRS_TotalRawScore ~ mABC_TotalStandardScore + SecondaryDiagnosis, autismVer2))
+
+# Normality
+#qqnorm(residuals)
+qqnorm(residualsV1)
+qqnorm(residualsV2)
+```
+
+## Checking Assumptions
+
+```{r fig.height=2.5,fig.width=4}
+# Linearity
+#ggplot(data=NULL, aes(values, residuals)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+ggplot(data=NULL, aes(valuesV1, residualsV1)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+ggplot(data=NULL, aes(valuesV2, residualsV2)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+```
+
+```{r fig.height=2.5,fig.width=4}
+# Homoskadasticity
+#ggplot(data=NULL, aes(values, residuals^2)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+ggplot(data=NULL, aes(valuesV1, residualsV1^2)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+ggplot(data=NULL, aes(valuesV2, residualsV2^2)) + geom_point() + geom_smooth(method="loess", formula = y ~ x)
+
+# It looks like test version 1's data fits the three assumptions quite a bit better than test version 2's data
+```
+
+## Comparing Beta Estimates
+
+```{r}
+#summary(data)
+#names(data)
+
+betas <- data.frame(
+   DiagnosisGroup = factor(c("_Typ1","_Typ2","Adhd1","Adhd2","Autism1","Autism2")),
+   BetaEstimates = c(typMovementBeta, typMovementBeta + typInteractionTerm,adhdMovementBeta,adhdMovementBeta + adhdInteractionTerm,autismMovementBeta,autismMovementBeta + autismInteractionTerm),
+   Version = factor(c(1,2,1,2,1,2)),
+   upper = c(typMovementBetaUpper,typMovementBeta + typInteractionTermUpper,adhdMovementBetaUpper,adhdMovementBeta + adhdInteractionTermUpper,autismMovementBetaUpper,autismMovementBeta + autismInteractionTermUpper),
+   lower = c(typMovementBetaLower,typMovementBeta + typInteractionTermLower,adhdMovementBetaLower,adhdMovementBeta + adhdInteractionTermLower,autismMovementBetaLower,autismMovementBeta + autismInteractionTermLower)
+)
+
+ggplot(betas, aes(DiagnosisGroup, BetaEstimates, color = Version)) + geom_pointrange(aes(ymin = lower, ymax = upper))
+
+```
