@@ -1,18 +1,34 @@
-# Analyzing and Modeling Motor Skills and Social Deficits and their Relationship in Children
+# The Relationship Between Motor Skills and Social Deficiencies in Children
 
-This repository contains an R script with linear models for analyzing relationships between motor performance and social responsiveness across three different conditions: Typical Development, ADHD, and Autism.
+**Analysis for Children with(out) Developmental Disorders: Typically Developing, ADHD Diagnosis, Autism Diagnosis**
+
+**Note:**
+Tools from the ggplot2 package are used for visualizations, and base R functions are used for linear modeling.
+
+---
+
+## File Overview
+
+This repository contains an R script with linear models for analyzing relationships between motor performance and social responsiveness across three different conditions: Typically Developing, ADHD, and Autism.
 
 To view the R presentation, download the HTML file ["Motor Skills and Social Deficits Presentation"](https://github.com/jaredwins99/motor-skills-and-social-deficits-relationship/blob/main/Motor%20Skills%20and%20Social%20Deficits%20Presentation.html) and open it in a browser.
-Use arrow keys to scroll through the presentation.
+
+Use **arrow keys** to scroll through the presentation.
+
+---
 
 ## Research Question
 
 Since movement impairments commonly co-occur in children alongside developmental disorders--including autism spectrum disorders (ASD) and attention-deficit/hyperactivity disorder (ADHD)--it is worthwhile to analyze the relationship between motor and social impairment.
 
+---
+
 ## Most Relevant Data Features
 
 - SRS_TotalRawScore: the social responsiveness scale attempts to ascertain a child's level of motivation to engage in social interactions, recognize emotional and interpersonal cues, and to interpret and respond to those cues appropraitely. Ranges from 0 to 195, with 195 reflecting severe social deficits.
 - mABC_TotalStandardScore: the movement assesssment battery for children attempts to identify imapirments in various motor performance of children between the ages of 3 and 17 years old. There are three main categories: manual dexterity, aiming and catching, and balance.
+
+---
 
 ## Modeling
 
@@ -37,12 +53,16 @@ Autism Model:
 - Initial models focus on the relationship between raw scores and total standard scores.
 - Developed a comprehensive model incorporating SecondaryDiagnosis.
 
+---
+
 ## Diagnostics
 
 Assumption Checks and Hypothesis Testing:
 
 - For each model, assumptions such as linearity and homoscedasticity were checked using visual plots.
 - F-tests were conducted to compare different models.
+
+---
 
 ## Results
 
@@ -55,6 +75,3 @@ Comparing Beta Estimates:
 - However, our confidence in the estimates followed the inverse relationship, from autism (loosest confidence interval), ADHD, to typically developing (tightest confidence interval).
 - Overall, this reflects weak evidence that there is a relationship between movement impairment and social impairement, with largest practical significance being for children with autism.
 
-
-Note:
-This repository primarily uses the ggplot2 package for visualizations and the base R functions for linear modeling.
